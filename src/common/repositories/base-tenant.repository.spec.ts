@@ -12,9 +12,11 @@ import { TenantContextService } from '../../tenant/tenant-context.service';
  * Extends Document so it satisfies the BaseTenantRepository<T extends Document> constraint.
  */
 interface TestDocument extends Document {
+  id: string;
   tenantId: string;
   name: string;
   deletedAt: Date | null;
+  __v: number;
 }
 
 /**
@@ -272,7 +274,7 @@ describe('BaseTenantRepository', () => {
 
       // The result should have deletedAt set
       expect(result).toBeDefined();
-      expect((result as Record<string, unknown>).deletedAt).toBeInstanceOf(Date);
+      expect((result as unknown as Record<string, unknown>).deletedAt).toBeInstanceOf(Date);
     });
 
     it('should return null for a document owned by a different tenant', async () => {

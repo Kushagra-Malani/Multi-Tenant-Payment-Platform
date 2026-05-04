@@ -10,6 +10,12 @@ import { UsageModule } from './usage/usage.module';
 import { RateLimitGuard } from './common/guards/rate-limit.guard';
 import { PaymentModule } from './payments/payment.module';
 
+import { AuthModule } from './auth/auth.module';
+import { JwtAuthGuard } from './auth/guards/jwt-auth.guard';
+import { TenantMatchGuard } from './auth/guards/tenant-match.guard';
+import { RolesGuard } from './auth/guards/roles.guard';
+import { WalletModule } from './wallets/wallet.module';
+
 const logger = new Logger('AppModule');
 
 /**
@@ -52,6 +58,8 @@ const logger = new Logger('AppModule');
     TenantModule,
     UsageModule,
     PaymentModule,
+    AuthModule,
+    WalletModule,
   ],
   controllers: [AppController],
   providers: [
@@ -61,6 +69,19 @@ const logger = new Logger('AppModule');
       useClass: RateLimitGuard,
       scope: Scope.REQUEST,
     },
+    {
+      provide: APP_GUARD,
+      useClass: JwtAuthGuard,
+    },
+    {
+      provide: APP_GUARD,
+      useClass: TenantMatchGuard,
+      scope: Scope.REQUEST,
+    },
+    {
+      provide: APP_GUARD,
+      useClass: RolesGuard,
+    },
   ],
 })
 export class AppModule implements NestModule {
@@ -69,7 +90,10 @@ export class AppModule implements NestModule {
    * Every request must be resolved to a tenant before any controller logic runs.
    */
   configure(consumer: MiddlewareConsumer): void {
-    consumer.apply(TenantMiddleware).forRoutes('*');
+    consumer
+      .apply(TenantMiddleware)
+      .exclude('tenants/public')
+      .forRoutes('*');
   }
 }
 

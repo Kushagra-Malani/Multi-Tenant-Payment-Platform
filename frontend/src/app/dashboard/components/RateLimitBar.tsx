@@ -30,9 +30,9 @@ export default function RateLimitBar({ limit, remaining }: RateLimitBarProps) {
           <strong>{used}</strong> / {limit}
         </Typography>
       </Box>
-      <LinearProgress 
-        variant="determinate" 
-        value={Math.min(percentage, 100)} 
+      <LinearProgress
+        variant="determinate"
+        value={Math.min(percentage, 100)}
         color={color}
         sx={{ height: 10, borderRadius: 5 }}
       />

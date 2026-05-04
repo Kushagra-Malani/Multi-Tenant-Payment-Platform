@@ -41,6 +41,15 @@ export class TenantService {
   }
 
   /**
+   * Look up a tenant by its MongoDB ID string.
+   * Uses Redis key: `tenant:id:{id}`.
+   */
+  async findById(id: string): Promise<TenantDocument | null> {
+    const cacheKey = `tenant:id:${id}`;
+    return this.findWithCache(cacheKey, { _id: id, deletedAt: null });
+  }
+
+  /**
    * Look up a tenant by its custom domain (e.g. payments.hdfc.com).
    * Uses Redis key: `tenant:domain:{domain}` with the same TTL.
    */
@@ -98,5 +107,22 @@ export class TenantService {
     }
 
     return tenant;
+  }
+
+  /**
+   * List all tenants in the system.
+   * Access: SUPER_ADMIN only.
+   */
+  async findAll(): Promise<Tenant[]> {
+    return this.tenantModel.find({ deletedAt: null }).exec();
+  }
+
+  /**
+   * Create a new tenant.
+   * Access: SUPER_ADMIN only.
+   */
+  async create(data: Partial<Tenant>): Promise<Tenant> {
+    const tenant = new this.tenantModel(data);
+    return tenant.save();
   }
 }

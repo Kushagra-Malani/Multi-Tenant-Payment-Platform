@@ -80,6 +80,7 @@ describe('TenantMiddleware', () => {
   let middleware: TenantMiddleware;
   let tenantService: {
     findBySlug: ReturnType<typeof vi.fn>;
+    findById: ReturnType<typeof vi.fn>;
     findByCustomDomain: ReturnType<typeof vi.fn>;
   };
   let tenantContext: { set: ReturnType<typeof vi.fn> };
@@ -89,6 +90,7 @@ describe('TenantMiddleware', () => {
   beforeEach(() => {
     tenantService = {
       findBySlug: vi.fn(),
+      findById: vi.fn(),
       findByCustomDomain: vi.fn(),
     };
 
@@ -253,17 +255,17 @@ describe('TenantMiddleware', () => {
 
   describe('JWT claim resolution (Priority 3)', () => {
     it('should resolve tenant from JWT when no subdomain or header', async () => {
-      const tenant = createMockTenant({ slug: 'bank3' });
-      tenantService.findBySlug.mockResolvedValue(tenant);
+      const tenant = createMockTenant({ _id: 'tenant-id-123' });
+      tenantService.findById.mockResolvedValue(tenant);
 
-      const jwt = createFakeJwt({ tenantId: 'bank3', sub: 'user123' });
+      const jwt = createFakeJwt({ tenantId: 'tenant-id-123', sub: 'user123' });
       const req = createMockRequest({
         host: 'financeops.com',
         authorization: `Bearer ${jwt}`,
       });
       await middleware.use(req, mockRes, mockNext);
 
-      expect(tenantService.findBySlug).toHaveBeenCalledWith('bank3');
+      expect(tenantService.findById).toHaveBeenCalledWith('tenant-id-123');
       expect(tenantContext.set).toHaveBeenCalledWith(tenant);
       expect(mockNext).toHaveBeenCalled();
     });

@@ -6,6 +6,7 @@ import { Tenant, TenantSchema } from './tenant.schema';
 import { TenantService } from './tenant.service';
 import { TenantContextService } from './tenant-context.service';
 import { TenantMiddleware } from './tenant.middleware';
+import { TenantController } from './tenant.controller';
 
 const logger = new Logger('TenantModule');
 
@@ -25,6 +26,7 @@ const logger = new Logger('TenantModule');
   imports: [
     MongooseModule.forFeature([{ name: Tenant.name, schema: TenantSchema }]),
   ],
+  controllers: [TenantController],
   providers: [
     // Redis client factory — single shared connection with TLS support (Upstash)
     {
@@ -64,6 +66,6 @@ const logger = new Logger('TenantModule');
     TenantContextService,
     TenantMiddleware,
   ],
-  exports: [TenantService, TenantContextService, 'REDIS_CLIENT'],
+  exports: [TenantService, TenantContextService, TenantMiddleware, 'REDIS_CLIENT'],
 })
 export class TenantModule {}

@@ -3,6 +3,8 @@ import Redis from 'ioredis';
 import { TenantContextService } from '../../tenant/tenant-context.service';
 import { UsageTrackingService } from '../../usage/usage-tracking.service';
 import { Response } from 'express';
+import { Reflector } from '@nestjs/core';
+import { IS_PUBLIC_KEY } from '../decorators/public.decorator';
 
 const SLIDING_WINDOW_LUA_SCRIPT = `
   local current = redis.call('INCR', KEYS[1])
@@ -18,9 +20,19 @@ export class RateLimitGuard implements CanActivate {
     @Inject('REDIS_CLIENT') private readonly redis: Redis,
     private readonly tenantContext: TenantContextService,
     private readonly usageTracking: UsageTrackingService,
+    private readonly reflector: Reflector,
   ) {}
 
   async canActivate(context: ExecutionContext): Promise<boolean> {
+    const isPublic = this.reflector.getAllAndOverride<boolean>(IS_PUBLIC_KEY, [
+      context.getHandler(),
+      context.getClass(),
+    ]);
+
+    if (isPublic) {
+      return true;
+    }
+
     const tenant = this.tenantContext.get();
     const limit = tenant.apiRateLimit;
 

@@ -2,14 +2,30 @@
 
 import { useEffect, useState } from 'react';
 import { useSearchParams, useRouter } from 'next/navigation';
-import { 
-  Box, Container, Typography, Paper, Grid, TextField, 
-  Button, MenuItem, Table, TableBody, TableCell, 
-  TableContainer, TableHead, TableRow, Snackbar, Alert,
-  IconButton
+import {
+  Box,
+  Container,
+  Typography,
+  Paper,
+  Grid,
+  TextField,
+  Button,
+  MenuItem,
+  Table,
+  TableBody,
+  TableCell,
+  TableContainer,
+  TableHead,
+  TableRow,
+  Snackbar,
+  Alert,
+  IconButton,
+  Chip,
 } from '@mui/material';
 import ArrowBackIcon from '@mui/icons-material/ArrowBack';
+import DeleteIcon from '@mui/icons-material/Delete';
 import RateLimitBar from './components/RateLimitBar';
+import api from '../../lib/api';
 
 export default function Dashboard() {
   const searchParams = useSearchParams();
@@ -20,193 +36,539 @@ export default function Dashboard() {
   const [amount, setAmount] = useState('');
   const [currency, setCurrency] = useState('USD');
   const [status, setStatus] = useState('pending');
-  
-  const [rateLimit, setRateLimit] = useState({ limit: 0, remaining: 0 });
-  const [snackbar, setSnackbar] = useState({ open: false, message: '', severity: 'success' as 'success' | 'error' });
+  const [user, setUser] = useState<any>(null);
 
-  const fetchPayments = async () => {
-    if (!tenantSlug) return;
+  const [rateLimit, setRateLimit] = useState({ limit: 0, remaining: 0 });
+  const [snackbar, setSnackbar] = useState({
+    open: false,
+    message: '',
+    severity: 'success' as 'success' | 'error',
+  });
+
+  // Super Admin specific state
+  const [tenants, setTenants] = useState<any[]>([]);
+  const [newTenant, setNewTenant] = useState({
+    slug: '',
+    name: '',
+    tier: 'starter',
+  });
+  const [selectedTenant, setSelectedTenant] = useState(tenantSlug);
+
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      const storedUser = localStorage.getItem('user');
+      if (storedUser) {
+        setUser(JSON.parse(storedUser));
+      }
+    }
+  }, []);
+
+  const fetchTenants = async () => {
     try {
-      const res = await fetch('/api/payments', {
-        headers: { 'X-Tenant-ID': tenantSlug }
+      const res = await api.get('/tenants', {
+        headers: { 'X-Tenant-ID': 'platform' },
       });
-      
-      const limit = parseInt(res.headers.get('X-RateLimit-Limit') || '0', 10);
-      const remaining = parseInt(res.headers.get('X-RateLimit-Remaining') || '0', 10);
+      setTenants(res.data);
+    } catch (error) {
+      console.error('Failed to fetch tenants');
+    }
+  };
+
+  const fetchPayments = async (targetTenant?: string) => {
+    const slug = targetTenant || tenantSlug;
+    if (!slug) return;
+    try {
+      const res = await api.get('/payments', {
+        headers: { 'X-Tenant-ID': slug },
+      });
+
+      const limit = parseInt(res.headers['x-ratelimit-limit'] || '0', 10);
+      const remaining = parseInt(
+        res.headers['x-ratelimit-remaining'] || '0',
+        10,
+      );
       if (limit > 0) {
         setRateLimit({ limit, remaining });
       }
 
-      if (!res.ok) {
-        if (res.status === 429) {
-          throw new Error('Rate limit exceeded! Please wait.');
-        }
-        if (res.status === 401) {
-          throw new Error('Unauthorized or inactive tenant.');
-        }
-        throw new Error('Failed to fetch payments');
-      }
-
-      const data = await res.json();
-      setPayments(data);
+      setPayments(res.data);
     } catch (error: any) {
-      setSnackbar({ open: true, message: error.message, severity: 'error' });
+      let msg = 'Failed to fetch payments';
+      if (error.response) {
+        if (error.response.status === 429)
+          msg = 'Rate limit exceeded! Please wait.';
+        if (error.response.status === 401)
+          msg = 'Unauthorized or inactive tenant.';
+        if (error.response.status === 403)
+          msg =
+            'Cross-tenant access denied! You are not authorized for this tenant.';
+      }
+      setSnackbar({ open: true, message: msg, severity: 'error' });
     }
   };
 
   useEffect(() => {
-    fetchPayments();
-  }, [tenantSlug]);
+    fetchPayments(selectedTenant);
+    if (user?.role === 'SUPER_ADMIN') {
+      fetchTenants();
+    }
+  }, [tenantSlug, user, selectedTenant]);
+
+  const handleDelete = async (id: string) => {
+    if (!window.confirm('Are you sure you want to delete this payment?'))
+      return;
+
+    try {
+      await api.delete(`/payments/${id}`, {
+        headers: { 'X-Tenant-ID': selectedTenant },
+      });
+      setSnackbar({
+        open: true,
+        message: 'Payment deleted successfully',
+        severity: 'success',
+      });
+      fetchPayments(selectedTenant);
+    } catch (error: any) {
+      setSnackbar({
+        open: true,
+        message: 'Failed to delete payment',
+        severity: 'error',
+      });
+    }
+  };
+
+  const handleCreateTenant = async (e: React.FormEvent) => {
+    e.preventDefault();
+    try {
+      await api.post('/tenants', newTenant, {
+        headers: { 'X-Tenant-ID': 'platform' },
+      });
+      setSnackbar({
+        open: true,
+        message: 'Tenant created successfully!',
+        severity: 'success',
+      });
+      setNewTenant({ slug: '', name: '', tier: 'starter' });
+      fetchTenants();
+    } catch (error) {
+      setSnackbar({
+        open: true,
+        message: 'Failed to create tenant',
+        severity: 'error',
+      });
+    }
+  };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     try {
-      const res = await fetch('/api/payments', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'X-Tenant-ID': tenantSlug
-        },
-        body: JSON.stringify({ amount: Number(amount), currency, status })
-      });
+      const res = await api.post(
+        '/payments',
+        { amount: Number(amount), currency, status },
+        { headers: { 'X-Tenant-ID': selectedTenant } },
+      );
 
-      const limit = parseInt(res.headers.get('X-RateLimit-Limit') || '0', 10);
-      const remaining = parseInt(res.headers.get('X-RateLimit-Remaining') || '0', 10);
+      const limit = parseInt(res.headers['x-ratelimit-limit'] || '0', 10);
+      const remaining = parseInt(
+        res.headers['x-ratelimit-remaining'] || '0',
+        10,
+      );
       if (limit > 0) {
         setRateLimit({ limit, remaining });
       }
 
-      if (!res.ok) {
-        if (res.status === 429) {
-          throw new Error('Rate limit exceeded! Please wait.');
-        }
-        if (res.status === 403) {
-          throw new Error('Transaction limit exceeded for this tenant tier.');
-        }
-        throw new Error('Failed to create payment');
-      }
-
-      setSnackbar({ open: true, message: 'Payment created successfully!', severity: 'success' });
+      setSnackbar({
+        open: true,
+        message: 'Payment created successfully!',
+        severity: 'success',
+      });
       setAmount('');
-      fetchPayments();
+      fetchPayments(selectedTenant);
     } catch (error: any) {
-      setSnackbar({ open: true, message: error.message, severity: 'error' });
+      let msg = 'Failed to create payment';
+      if (error.response) {
+        if (error.response.status === 429)
+          msg = 'Rate limit exceeded! Please wait.';
+        if (error.response.status === 403)
+          msg = 'Transaction limit exceeded or cross-tenant access denied.';
+      }
+      setSnackbar({ open: true, message: msg, severity: 'error' });
     }
   };
 
   if (!tenantSlug) {
-    return <Typography sx={{ mt: 4 }} align="center">No tenant specified</Typography>;
+    return (
+      <Typography sx={{ mt: 4 }} align="center">
+        No tenant specified
+      </Typography>
+    );
   }
 
+  const isAdmin = user?.role === 'TENANT_ADMIN' || user?.role === 'SUPER_ADMIN';
+  const isSuperAdmin = user?.role === 'SUPER_ADMIN';
+
   return (
-    <Container maxWidth="lg" sx={{ py: 4 }}>
-      <Box display="flex" alignItems="center" mb={4}>
-        <IconButton onClick={() => router.push('/')} sx={{ mr: 2 }}>
-          <ArrowBackIcon />
-        </IconButton>
-        <Typography variant="h4" component="h1">
-          {tenantSlug.toUpperCase()} Dashboard
-        </Typography>
-      </Box>
-
-      <RateLimitBar limit={rateLimit.limit} remaining={rateLimit.remaining} />
-
-      <Grid container spacing={4}>
-        <Grid item xs={12} md={4}>
-          <Paper sx={{ p: 3 }}>
-            <Typography variant="h6" gutterBottom>
-              Create New Payment
-            </Typography>
-            <Box component="form" onSubmit={handleSubmit}>
-              <TextField
-                label="Amount"
-                type="number"
-                fullWidth
-                margin="normal"
-                required
-                value={amount}
-                onChange={(e) => setAmount(e.target.value)}
-              />
-              <TextField
-                select
-                label="Currency"
-                fullWidth
-                margin="normal"
-                value={currency}
-                onChange={(e) => setCurrency(e.target.value)}
+    <Box
+      sx={{
+        minHeight: '100vh',
+        background: 'linear-gradient(135deg, #0f172a 0%, #1e293b 100%)',
+        color: 'white',
+        pb: 8,
+      }}
+    >
+      <Container maxWidth="lg" sx={{ py: 4 }}>
+        {/* Header Section */}
+        <Box
+          sx={{
+            display: 'flex',
+            alignItems: 'center',
+            mb: 4,
+            justifyContent: 'space-between',
+            p: 3,
+            borderRadius: 4,
+            background: 'rgba(255, 255, 255, 0.03)',
+            backdropFilter: 'blur(10px)',
+            border: '1px solid rgba(255, 255, 255, 0.1)',
+          }}
+        >
+          <Box sx={{ display: 'flex', alignItems: 'center' }}>
+            <IconButton
+              onClick={() => router.push('/')}
+              sx={{ mr: 2, color: 'white' }}
+            >
+              <ArrowBackIcon />
+            </IconButton>
+            <Box>
+              <Typography
+                variant="h4"
+                component="h1"
+                sx={{ fontWeight: 800, letterSpacing: -1 }}
               >
-                <MenuItem value="USD">USD</MenuItem>
-                <MenuItem value="EUR">EUR</MenuItem>
-                <MenuItem value="INR">INR</MenuItem>
-              </TextField>
-              <TextField
-                select
-                label="Status"
-                fullWidth
-                margin="normal"
-                value={status}
-                onChange={(e) => setStatus(e.target.value)}
-              >
-                <MenuItem value="pending">Pending</MenuItem>
-                <MenuItem value="completed">Completed</MenuItem>
-                <MenuItem value="failed">Failed</MenuItem>
-              </TextField>
-              <Button 
-                type="submit" 
-                variant="contained" 
-                color="primary" 
-                fullWidth 
-                sx={{ mt: 2 }}
-              >
-                Create Payment
-              </Button>
+                {isSuperAdmin
+                  ? 'PLATFORM CONTROL'
+                  : `${tenantSlug.toUpperCase()} HUB`}
+              </Typography>
+              <Typography variant="body2" sx={{ opacity: 0.6 }}>
+                {isSuperAdmin
+                  ? 'System-wide Administration'
+                  : 'Isolated Institution Dashboard'}
+              </Typography>
             </Box>
-          </Paper>
-        </Grid>
+          </Box>
 
-        <Grid item xs={12} md={8}>
-          <TableContainer component={Paper}>
-            <Table>
-              <TableHead>
-                <TableRow>
-                  <TableCell><strong>ID</strong></TableCell>
-                  <TableCell><strong>Amount</strong></TableCell>
-                  <TableCell><strong>Currency</strong></TableCell>
-                  <TableCell><strong>Status</strong></TableCell>
-                  <TableCell><strong>Created At</strong></TableCell>
-                </TableRow>
-              </TableHead>
-              <TableBody>
-                {payments.length === 0 ? (
+          {isSuperAdmin && (
+            <Box sx={{ textAlign: 'right' }}>
+              <Typography
+                variant="caption"
+                sx={{
+                  display: 'block',
+                  mb: 0.5,
+                  opacity: 0.5,
+                  fontWeight: 'bold',
+                }}
+              >
+                SWITCH TENANT VIEW
+              </Typography>
+              <TextField
+                select
+                value={selectedTenant}
+                onChange={(e) => setSelectedTenant(e.target.value)}
+                variant="outlined"
+                size="small"
+                sx={{
+                  minWidth: 240,
+                  ...textFieldStyles,
+                  '& .MuiOutlinedInput-root': {
+                    ...textFieldStyles['& .MuiOutlinedInput-root'],
+                    background: 'rgba(99, 102, 241, 0.1)',
+                    borderRadius: 2,
+                  },
+                }}
+              >
+                {tenants.map((t) => (
+                  <MenuItem key={t.slug} value={t.slug}>
+                    {t.name} ({t.slug})
+                  </MenuItem>
+                ))}
+              </TextField>
+            </Box>
+          )}
+        </Box>
+
+        {!isSuperAdmin && (
+          <RateLimitBar
+            limit={rateLimit.limit}
+            remaining={rateLimit.remaining}
+          />
+        )}
+
+        <Grid container spacing={4}>
+          <Grid size={{ xs: 12, md: 4 }}>
+            {isSuperAdmin && (
+              <Paper sx={{ ...glassPaper, p: 3, mb: 4 }}>
+                <Typography variant="h6" sx={{ fontWeight: 'bold', mb: 2 }}>
+                  Register New Institution
+                </Typography>
+                <Box component="form" onSubmit={handleCreateTenant}>
+                  <TextField
+                    label="Tenant Name"
+                    fullWidth
+                    margin="dense"
+                    required
+                    value={newTenant.name}
+                    onChange={(e) =>
+                      setNewTenant({ ...newTenant, name: e.target.value })
+                    }
+                    sx={textFieldStyles}
+                  />
+                  <TextField
+                    label="Tenant Slug"
+                    fullWidth
+                    margin="dense"
+                    required
+                    value={newTenant.slug}
+                    onChange={(e) =>
+                      setNewTenant({ ...newTenant, slug: e.target.value })
+                    }
+                    sx={textFieldStyles}
+                  />
+                  <TextField
+                    select
+                    label="Subscription Tier"
+                    fullWidth
+                    margin="dense"
+                    value={newTenant.tier}
+                    onChange={(e) =>
+                      setNewTenant({ ...newTenant, tier: e.target.value })
+                    }
+                    sx={textFieldStyles}
+                  >
+                    <MenuItem value="starter">Starter</MenuItem>
+                    <MenuItem value="professional">Professional</MenuItem>
+                    <MenuItem value="enterprise">Enterprise</MenuItem>
+                  </TextField>
+                  <Button
+                    type="submit"
+                    variant="contained"
+                    fullWidth
+                    sx={{
+                      mt: 3,
+                      py: 1.5,
+                      fontWeight: 'bold',
+                      background:
+                        'linear-gradient(90deg, #a855f7 0%, #d946ef 100%)',
+                    }}
+                  >
+                    Deploy New Tenant
+                  </Button>
+                </Box>
+              </Paper>
+            )}
+
+            <Paper sx={{ ...glassPaper, p: 3 }}>
+              <Typography variant="h6" sx={{ fontWeight: 'bold', mb: 2 }}>
+                {isSuperAdmin
+                  ? 'Direct Transaction Injection'
+                  : 'Create New Payment'}
+              </Typography>
+              <Box component="form" onSubmit={handleSubmit}>
+                <TextField
+                  label="Amount"
+                  type="number"
+                  fullWidth
+                  margin="normal"
+                  required
+                  value={amount}
+                  onChange={(e) => setAmount(e.target.value)}
+                  sx={textFieldStyles}
+                />
+                <TextField
+                  select
+                  label="Currency"
+                  fullWidth
+                  margin="normal"
+                  value={currency}
+                  onChange={(e) => setCurrency(e.target.value)}
+                  sx={textFieldStyles}
+                >
+                  <MenuItem value="USD">USD</MenuItem>
+                  <MenuItem value="EUR">EUR</MenuItem>
+                  <MenuItem value="INR">INR</MenuItem>
+                </TextField>
+                <TextField
+                  select
+                  label="Status"
+                  fullWidth
+                  margin="normal"
+                  value={status}
+                  onChange={(e) => setStatus(e.target.value)}
+                  sx={textFieldStyles}
+                >
+                  <MenuItem value="pending">Pending</MenuItem>
+                  <MenuItem value="completed">Completed</MenuItem>
+                  <MenuItem value="failed">Failed</MenuItem>
+                </TextField>
+                <Button
+                  type="submit"
+                  variant="contained"
+                  fullWidth
+                  sx={{
+                    mt: 3,
+                    py: 1.5,
+                    fontWeight: 'bold',
+                    background:
+                      'linear-gradient(90deg, #6366f1 0%, #8b5cf6 100%)',
+                  }}
+                >
+                  Process Payment
+                </Button>
+              </Box>
+            </Paper>
+          </Grid>
+
+          <Grid size={{ xs: 12, md: 8 }}>
+            <TableContainer component={Paper} sx={{ ...glassPaper }}>
+              <Table>
+                <TableHead>
                   <TableRow>
-                    <TableCell colSpan={5} align="center">No payments found</TableCell>
+                    <TableCell sx={tableHeaderStyle}>
+                      <strong>ID</strong>
+                    </TableCell>
+                    <TableCell sx={tableHeaderStyle}>
+                      <strong>AMOUNT</strong>
+                    </TableCell>
+                    <TableCell sx={tableHeaderStyle}>
+                      <strong>CURRENCY</strong>
+                    </TableCell>
+                    <TableCell sx={tableHeaderStyle}>
+                      <strong>STATUS</strong>
+                    </TableCell>
+                    <TableCell sx={tableHeaderStyle}>
+                      <strong>TIMESTAMP</strong>
+                    </TableCell>
+                    {isAdmin && (
+                      <TableCell align="right" sx={tableHeaderStyle}>
+                        <strong>ACTIONS</strong>
+                      </TableCell>
+                    )}
                   </TableRow>
-                ) : (
-                  payments.map((p) => (
-                    <TableRow key={p._id}>
-                      <TableCell>{p._id.slice(-6)}</TableCell>
-                      <TableCell>{p.amount}</TableCell>
-                      <TableCell>{p.currency}</TableCell>
-                      <TableCell>{p.status}</TableCell>
-                      <TableCell>{new Date(p.createdAt).toLocaleString()}</TableCell>
+                </TableHead>
+                <TableBody>
+                  {payments.length === 0 ? (
+                    <TableRow>
+                      <TableCell
+                        colSpan={isAdmin ? 6 : 5}
+                        align="center"
+                        sx={{ color: 'rgba(255,255,255,0.5)', py: 8 }}
+                      >
+                        No transaction data available for this tenant.
+                      </TableCell>
                     </TableRow>
-                  ))
-                )}
-              </TableBody>
-            </Table>
-          </TableContainer>
+                  ) : (
+                    payments.map((p) => (
+                      <TableRow
+                        key={p._id}
+                        sx={{
+                          '&:hover': { background: 'rgba(255,255,255,0.02)' },
+                        }}
+                      >
+                        <TableCell sx={{ color: 'white', opacity: 0.8 }}>
+                          {p._id.slice(-6).toUpperCase()}
+                        </TableCell>
+                        <TableCell sx={{ color: 'white', fontWeight: 'bold' }}>
+                          {p.amount}
+                        </TableCell>
+                        <TableCell sx={{ color: 'white', opacity: 0.8 }}>
+                          {p.currency}
+                        </TableCell>
+                        <TableCell>
+                          <Chip
+                            label={p.status.toUpperCase()}
+                            size="small"
+                            sx={{
+                              background:
+                                p.status === 'completed'
+                                  ? 'rgba(34, 197, 94, 0.2)'
+                                  : 'rgba(249, 115, 22, 0.2)',
+                              color:
+                                p.status === 'completed'
+                                  ? '#4ade80'
+                                  : '#fb923c',
+                              fontWeight: 'bold',
+                              fontSize: '0.65rem',
+                            }}
+                          />
+                        </TableCell>
+                        <TableCell
+                          sx={{
+                            color: 'white',
+                            opacity: 0.6,
+                            fontSize: '0.8rem',
+                          }}
+                        >
+                          {new Date(p.createdAt).toLocaleString()}
+                        </TableCell>
+                        {isAdmin && (
+                          <TableCell align="right">
+                            <IconButton
+                              size="small"
+                              sx={{ color: '#ef4444' }}
+                              onClick={() => handleDelete(p._id)}
+                            >
+                              <DeleteIcon />
+                            </IconButton>
+                          </TableCell>
+                        )}
+                      </TableRow>
+                    ))
+                  )}
+                </TableBody>
+              </Table>
+            </TableContainer>
+          </Grid>
         </Grid>
-      </Grid>
 
-      <Snackbar 
-        open={snackbar.open} 
-        autoHideDuration={6000} 
-        onClose={() => setSnackbar({ ...snackbar, open: false })}
-      >
-        <Alert severity={snackbar.severity} sx={{ width: '100%' }}>
-          {snackbar.message}
-        </Alert>
-      </Snackbar>
-    </Container>
+        <Snackbar
+          open={snackbar.open}
+          autoHideDuration={6000}
+          onClose={() => setSnackbar({ ...snackbar, open: false })}
+        >
+          <Alert
+            severity={snackbar.severity}
+            sx={{ width: '100%', borderRadius: 2 }}
+          >
+            {snackbar.message}
+          </Alert>
+        </Snackbar>
+      </Container>
+    </Box>
   );
 }
+
+const textFieldStyles = {
+  '& .MuiOutlinedInput-root': {
+    color: 'white',
+    '& fieldset': { borderColor: 'rgba(255, 255, 255, 0.1)' },
+    '&:hover fieldset': { borderColor: 'rgba(255, 255, 255, 0.3)' },
+    '&.Mui-focused fieldset': { borderColor: '#818cf8' },
+  },
+  '& .MuiInputLabel-root': { color: 'rgba(255, 255, 255, 0.4)' },
+  '& .MuiInputLabel-root.Mui-focused': { color: '#818cf8' },
+  '& .MuiSelect-icon': { color: 'white' },
+};
+
+const glassPaper = {
+  background: 'rgba(255, 255, 255, 0.05)',
+  backdropFilter: 'blur(10px)',
+  border: '1px solid rgba(255, 255, 255, 0.1)',
+  borderRadius: 4,
+  color: 'white',
+  overflow: 'hidden',
+};
+
+const tableHeaderStyle = {
+  color: 'rgba(255, 255, 255, 0.4)',
+  fontSize: '0.7rem',
+  letterSpacing: '1px',
+  borderBottom: '1px solid rgba(255, 255, 255, 0.1)',
+};

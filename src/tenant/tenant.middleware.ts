@@ -102,7 +102,8 @@ export class TenantMiddleware implements NestMiddleware {
 
     // Check if this is the bare platform domain (no subdomain)
     if (hostname === this.platformDomain) {
-      return null;
+      // Root domain resolves to the "platform" tenant for super admin access
+      return this.tenantService.findBySlug('platform');
     }
 
     // Check if host ends with the platform domain → extract subdomain
@@ -165,7 +166,7 @@ export class TenantMiddleware implements NestMiddleware {
         return null;
       }
 
-      return this.tenantService.findBySlug(payload.tenantId);
+      return this.tenantService.findById(payload.tenantId);
     } catch {
       this.logger.warn('Failed to decode JWT for tenant extraction');
       return null;
