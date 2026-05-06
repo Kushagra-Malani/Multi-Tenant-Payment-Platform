@@ -9,6 +9,12 @@ import {
   CardContent,
   CircularProgress,
   Alert,
+  Button,
+  Dialog,
+  DialogTitle,
+  DialogContent,
+  DialogActions,
+  TextField,
   IconButton,
   Chip,
 } from '@mui/material';
@@ -30,6 +36,31 @@ export default function WalletsPage() {
   const [wallets, setWallets] = useState<Wallet[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
+  
+  const [openDialog, setOpenDialog] = useState(false);
+  const [newWallet, setNewWallet] = useState({
+    userId: '',
+    ownerName: '',
+    currency: 'INR',
+    initialBalance: 0,
+  });
+
+  const handleCreateWallet = async (e: React.FormEvent) => {
+    e.preventDefault();
+    try {
+      await api.post(
+        '/wallets',
+        { ...newWallet, initialBalance: newWallet.initialBalance * 100 },
+        { headers: { 'X-Tenant-ID': selectedTenant } },
+      );
+      setOpenDialog(false);
+      setNewWallet({ userId: '', ownerName: '', currency: 'INR', initialBalance: 0 });
+      fetchWallets();
+    } catch (err: any) {
+      setError(err.response?.data?.message || 'Failed to create wallet');
+      setOpenDialog(false);
+    }
+  };
 
   const fetchWallets = async () => {
     if (!selectedTenant) return;
@@ -75,13 +106,65 @@ export default function WalletsPage() {
         <Typography variant="h4" sx={{ fontWeight: 'bold' }}>
           Wallets
         </Typography>
-        <IconButton
-          onClick={fetchWallets}
-          sx={{ color: 'white', bgcolor: 'rgba(255,255,255,0.1)' }}
-        >
-          <RefreshIcon />
-        </IconButton>
+        <Box>
+          <Button 
+            variant="contained" 
+            onClick={() => setOpenDialog(true)}
+            sx={{ mr: 2, background: 'linear-gradient(90deg, #a855f7 0%, #d946ef 100%)' }}
+          >
+            + New Customer
+          </Button>
+          <IconButton
+            onClick={fetchWallets}
+            sx={{ color: 'white', bgcolor: 'rgba(255,255,255,0.1)' }}
+          >
+            <RefreshIcon />
+          </IconButton>
+        </Box>
       </Box>
+
+      <Dialog open={openDialog} onClose={() => setOpenDialog(false)}>
+        <DialogTitle>Add New Customer Wallet</DialogTitle>
+        <Box component="form" onSubmit={handleCreateWallet}>
+          <DialogContent>
+            <TextField
+              margin="dense"
+              label="Customer ID (e.g. cust_001)"
+              fullWidth
+              required
+              value={newWallet.userId}
+              onChange={(e) => setNewWallet({ ...newWallet, userId: e.target.value })}
+            />
+            <TextField
+              margin="dense"
+              label="Full Name"
+              fullWidth
+              required
+              value={newWallet.ownerName}
+              onChange={(e) => setNewWallet({ ...newWallet, ownerName: e.target.value })}
+            />
+            <TextField
+              margin="dense"
+              label="Currency"
+              fullWidth
+              value={newWallet.currency}
+              onChange={(e) => setNewWallet({ ...newWallet, currency: e.target.value })}
+            />
+            <TextField
+              margin="dense"
+              label="Initial Balance"
+              type="number"
+              fullWidth
+              value={newWallet.initialBalance}
+              onChange={(e) => setNewWallet({ ...newWallet, initialBalance: Number(e.target.value) })}
+            />
+          </DialogContent>
+          <DialogActions>
+            <Button onClick={() => setOpenDialog(false)}>Cancel</Button>
+            <Button type="submit" variant="contained">Create</Button>
+          </DialogActions>
+        </Box>
+      </Dialog>
 
       {error && (
         <Alert severity="error" sx={{ mb: 4 }}>

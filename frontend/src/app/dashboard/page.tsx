@@ -22,6 +22,7 @@ import {
   IconButton,
   Chip,
 } from '@mui/material';
+import CheckCircleIcon from '@mui/icons-material/CheckCircle';
 import ArrowBackIcon from '@mui/icons-material/ArrowBack';
 import DeleteIcon from '@mui/icons-material/Delete';
 import RateLimitBar from './components/RateLimitBar';
@@ -33,6 +34,8 @@ export default function Dashboard() {
   const tenantSlug = searchParams.get('tenant') || '';
 
   const [payments, setPayments] = useState<any[]>([]);
+  const [wallets, setWallets] = useState<any[]>([]);
+  const [walletId, setWalletId] = useState('');
   const [amount, setAmount] = useState('');
   const [currency, setCurrency] = useState('USD');
   const [status, setStatus] = useState('pending');
@@ -74,6 +77,19 @@ export default function Dashboard() {
     }
   };
 
+  const fetchWallets = async (targetTenant?: string) => {
+    const slug = targetTenant || tenantSlug;
+    if (!slug) return;
+    try {
+      const res = await api.get('/wallets', {
+        headers: { 'X-Tenant-ID': slug },
+      });
+      setWallets(res.data);
+    } catch (error) {
+      console.error('Failed to fetch wallets:', error);
+    }
+  };
+
   const fetchPayments = async (targetTenant?: string) => {
     const slug = targetTenant || tenantSlug;
     if (!slug) return;
@@ -109,6 +125,7 @@ export default function Dashboard() {
 
   useEffect(() => {
     fetchPayments(selectedTenant);
+    fetchWallets(selectedTenant);
     if (user?.role === 'SUPER_ADMIN') {
       fetchTenants();
     }
@@ -164,7 +181,7 @@ export default function Dashboard() {
     try {
       const res = await api.post(
         '/payments',
-        { amount: Number(amount), currency, status },
+        { amount: Number(amount) * 100, currency, status, walletId },
         { headers: { 'X-Tenant-ID': selectedTenant } },
       );
 
@@ -183,6 +200,7 @@ export default function Dashboard() {
         severity: 'success',
       });
       setAmount('');
+      setWalletId('');
       fetchPayments(selectedTenant);
     } catch (error: any) {
       let msg = 'Failed to create payment';
@@ -193,6 +211,28 @@ export default function Dashboard() {
           msg = 'Transaction limit exceeded or cross-tenant access denied.';
       }
       setSnackbar({ open: true, message: msg, severity: 'error' });
+    }
+  };
+
+  const handleComplete = async (id: string) => {
+    try {
+      await api.patch(
+        `/payments/${id}`,
+        { status: 'completed' },
+        { headers: { 'X-Tenant-ID': selectedTenant } },
+      );
+      setSnackbar({
+        open: true,
+        message: 'Payment completed successfully!',
+        severity: 'success',
+      });
+      fetchPayments(selectedTenant);
+    } catch (error: any) {
+      setSnackbar({
+        open: true,
+        message: 'Failed to complete payment',
+        severity: 'error',
+      });
     }
   };
 
@@ -373,6 +413,22 @@ export default function Dashboard() {
               </Typography>
               <Box component="form" onSubmit={handleSubmit}>
                 <TextField
+                  select
+                  label="Destination Wallet (Customer)"
+                  fullWidth
+                  margin="normal"
+                  required
+                  value={walletId}
+                  onChange={(e) => setWalletId(e.target.value)}
+                  sx={textFieldStyles}
+                >
+                  {wallets.map((w) => (
+                    <MenuItem key={w.userId} value={w.userId}>
+                      {w.ownerName} ({w.userId})
+                    </MenuItem>
+                  ))}
+                </TextField>
+                <TextField
                   label="Amount"
                   type="number"
                   fullWidth
@@ -476,7 +532,7 @@ export default function Dashboard() {
                           {p._id.slice(-6).toUpperCase()}
                         </TableCell>
                         <TableCell sx={{ color: 'white', fontWeight: 'bold' }}>
-                          {p.amount}
+                          {(p.amount / 100).toLocaleString()}
                         </TableCell>
                         <TableCell sx={{ color: 'white', opacity: 0.8 }}>
                           {p.currency}
@@ -510,10 +566,21 @@ export default function Dashboard() {
                         </TableCell>
                         {isAdmin && (
                           <TableCell align="right">
+                            {p.status === 'pending' && (
+                              <IconButton
+                                size="small"
+                                sx={{ color: '#4ade80', mr: 1 }}
+                                onClick={() => handleComplete(p._id)}
+                                title="Complete Payment"
+                              >
+                                <CheckCircleIcon />
+                              </IconButton>
+                            )}
                             <IconButton
                               size="small"
                               sx={{ color: '#ef4444' }}
                               onClick={() => handleDelete(p._id)}
+                              title="Delete Payment"
                             >
                               <DeleteIcon />
                             </IconButton>

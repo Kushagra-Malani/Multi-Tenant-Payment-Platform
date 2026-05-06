@@ -14,6 +14,7 @@ export async function middleware(req: NextRequest) {
 
   // 1. Skip public routes and assets
   if (
+    pathname === '/' ||
     pathname.startsWith('/_next') ||
     pathname.startsWith('/login') ||
     pathname.startsWith('/favicon.ico') ||

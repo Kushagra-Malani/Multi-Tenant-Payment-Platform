@@ -22,6 +22,7 @@ import ReceiptLongIcon from '@mui/icons-material/ReceiptLong';
 import AccountBalanceIcon from '@mui/icons-material/AccountBalance';
 import DashboardIcon from '@mui/icons-material/Dashboard';
 import { TenantContext } from './TenantContext';
+import api from '../../lib/api';
 
 const drawerWidth = 240;
 
@@ -36,6 +37,7 @@ export default function DashboardLayout({
   const tenantQuery = searchParams.get('tenant');
 
   const [selectedTenant, setTenantState] = useState<string>('');
+  const [tenants, setTenants] = useState<{ slug: string; name: string }[]>([]);
   const [isMounted, setIsMounted] = useState(false);
 
   useEffect(() => {
@@ -53,6 +55,17 @@ export default function DashboardLayout({
     if (!tenantQuery) {
       router.replace(`${pathname}?tenant=${initialTenant}`);
     }
+
+    // Fetch live tenants list
+    const fetchTenants = async () => {
+      try {
+        const res = await api.get('/tenants/public');
+        setTenants(res.data);
+      } catch (error) {
+        console.error('Failed to fetch tenants for dropdown:', error);
+      }
+    };
+    fetchTenants();
   }, [tenantQuery, pathname, router]);
 
   const handleTenantChange = (event: SelectChangeEvent) => {
@@ -150,10 +163,13 @@ export default function DashboardLayout({
                 '& .MuiSvgIcon-root': { color: 'white' },
               }}
             >
-              <MenuItem value="bank1">Bank One</MenuItem>
-              <MenuItem value="hdfc">HDFC Bank</MenuItem>
-              <MenuItem value="enterprise-bank">Enterprise Bank</MenuItem>
+              {/* Always include platform context for Super Admins */}
               <MenuItem value="platform">Platform Admin</MenuItem>
+              {tenants.map((t) => (
+                <MenuItem key={t.slug} value={t.slug}>
+                  {t.name}
+                </MenuItem>
+              ))}
             </Select>
           </Box>
           <List>
