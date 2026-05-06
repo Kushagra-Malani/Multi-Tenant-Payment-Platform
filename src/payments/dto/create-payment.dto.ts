@@ -2,6 +2,9 @@ import { IsEnum, IsNumber, IsOptional, IsPositive, IsString, Length } from 'clas
 import { PaymentStatus } from '../payment.schema';
 
 export class CreatePaymentDto {
+  @IsString()
+  walletId!: string;
+
   @IsNumber()
   @IsPositive()
   amount!: number;

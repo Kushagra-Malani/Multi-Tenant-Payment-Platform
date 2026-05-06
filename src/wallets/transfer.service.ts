@@ -156,4 +156,63 @@ export class TransferService {
     }
     return this.ledgerRepository.find({}, { sort: { createdAt: -1 } });
   }
+
+  async createWallet(dto: { userId: string; ownerName: string; currency?: string; initialBalance?: number }): Promise<WalletDocument> {
+    const existing = await this.walletRepository.findByUserId(dto.userId);
+    if (existing) {
+      throw new BadRequestException('Wallet with this User ID already exists');
+    }
+
+    const wallet = await this.walletRepository.create({
+      userId: dto.userId,
+      ownerName: dto.ownerName,
+      currency: dto.currency || 'INR',
+      balance: dto.initialBalance || 0,
+      isActive: true,
+    });
+
+    return wallet;
+  }
+
+  async deposit(walletId: string, amount: number, currency: string, description?: string): Promise<LedgerDocument> {
+    const wallet = await this.walletRepository.findByUserId(walletId);
+    if (!wallet) {
+      throw new NotFoundException('Destination wallet not found');
+    }
+
+    if (wallet.currency.toUpperCase() !== currency.toUpperCase()) {
+      throw new BadRequestException('Currency mismatch for deposit');
+    }
+
+    const session = await this.connection.startSession();
+    let ledgerEntry: LedgerDocument;
+
+    try {
+      await session.withTransaction(async () => {
+        await this.walletRepository.findOneAndUpdate(
+          { userId: walletId },
+          { $inc: { balance: amount } },
+          {},
+          session,
+        );
+
+        ledgerEntry = await this.ledgerRepository.create(
+          {
+            toWalletId: wallet._id,
+            toUserId: walletId,
+            amount: amount,
+            currency: currency.toUpperCase(),
+            type: LedgerType.DEPOSIT,
+            status: LedgerStatus.COMPLETED,
+            description: description || 'Payment Deposit',
+          },
+          session,
+        );
+      });
+    } finally {
+      await session.endSession();
+    }
+
+    return ledgerEntry!;
+  }
 }

@@ -27,11 +27,11 @@ export class Ledger {
   @Prop({ type: MongooseSchema.Types.ObjectId, ref: 'Wallet', required: false })
   toWalletId?: Types.ObjectId;
 
-  @Prop({ type: String, required: true })
-  fromUserId!: string;
+  @Prop({ type: String, required: false })
+  fromUserId?: string;
 
-  @Prop({ type: String, required: true })
-  toUserId!: string;
+  @Prop({ type: String, required: false })
+  toUserId?: string;
 
   @Prop({ type: Number, required: true, min: 0.01 })
   amount!: number;

@@ -4,7 +4,8 @@ import { UsageTrackingService } from '../usage/usage-tracking.service';
 import { CreatePaymentDto } from './dto/create-payment.dto';
 import { UpdatePaymentDto } from './dto/update-payment.dto';
 import { TenantContextService } from '../tenant/tenant-context.service';
-import { PaymentDocument } from './payment.schema';
+import { PaymentDocument, PaymentStatus } from './payment.schema';
+import { TransferService } from '../wallets/transfer.service';
 
 @Injectable()
 export class PaymentService {
@@ -12,6 +13,7 @@ export class PaymentService {
     private readonly paymentRepository: PaymentRepository,
     private readonly usageTracking: UsageTrackingService,
     private readonly tenantContext: TenantContextService,
+    private readonly transferService: TransferService,
   ) {}
 
   async create(createPaymentDto: CreatePaymentDto): Promise<PaymentDocument> {
@@ -26,11 +28,20 @@ export class PaymentService {
 
     await this.usageTracking.trackTransaction(tenant.id).catch(() => {});
 
+    if (payment.status === PaymentStatus.COMPLETED) {
+      await this.transferService.deposit(
+        payment.walletId,
+        payment.amount,
+        payment.currency,
+        `Payment ${payment._id}`,
+      );
+    }
+
     return payment;
   }
 
   async findAll(): Promise<PaymentDocument[]> {
-    return this.paymentRepository.find();
+    return this.paymentRepository.find({}, { sort: { createdAt: -1 } });
   }
 
   async findOne(id: string): Promise<PaymentDocument> {
@@ -42,10 +53,23 @@ export class PaymentService {
   }
 
   async update(id: string, updatePaymentDto: UpdatePaymentDto): Promise<PaymentDocument> {
+    const existing = await this.findOne(id);
     const payment = await this.paymentRepository.findByIdAndUpdate(id, updatePaymentDto);
+    
     if (!payment) {
       throw new NotFoundException(`Payment with ID ${id} not found.`);
     }
+
+    // If status changed to COMPLETED, deposit to wallet
+    if (existing.status !== PaymentStatus.COMPLETED && updatePaymentDto.status === PaymentStatus.COMPLETED) {
+      await this.transferService.deposit(
+        payment.walletId,
+        payment.amount,
+        payment.currency,
+        `Payment ${payment._id}`,
+      );
+    }
+
     return payment;
   }
 

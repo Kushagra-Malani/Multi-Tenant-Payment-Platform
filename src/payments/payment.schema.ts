@@ -22,6 +22,10 @@ export class Payment {
   @Prop({ type: String, required: true, index: true })
   tenantId!: string;
 
+  /** The destination wallet ID (Customer) receiving the payment. */
+  @Prop({ type: String, required: true })
+  walletId!: string;
+
   /** Transaction amount in minor units (e.g. cents). */
   @Prop({ type: Number, required: true })
   amount!: number;
