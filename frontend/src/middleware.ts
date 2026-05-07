@@ -23,30 +23,14 @@ export async function middleware(req: NextRequest) {
     return NextResponse.next();
   }
 
-  // 2. Check for the 'jwt' cookie
-  const token = req.cookies.get('jwt')?.value;
+  // 2. Check for the 'isAuthenticated' cookie
+  const isAuthenticated = req.cookies.get('isAuthenticated')?.value;
 
-  if (!token) {
+  if (!isAuthenticated) {
     return NextResponse.redirect(new URL('/login', req.url));
   }
 
-  try {
-    // 3. Verify the JWT signature
-    // In production, ensure JWT_SECRET is set in environment variables
-    const secret = new TextEncoder().encode(
-      process.env.JWT_SECRET || 'dev-secret-change-in-prod',
-    );
-
-    await jwtVerify(token, secret);
-
-    return NextResponse.next();
-  } catch (error) {
-    // Token is invalid or expired
-    console.error('Middleware Auth Error:', error);
-    const response = NextResponse.redirect(new URL('/login', req.url));
-    response.cookies.delete('jwt');
-    return response;
-  }
+  return NextResponse.next();
 }
 
 export const config = {

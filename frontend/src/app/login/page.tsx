@@ -65,11 +65,6 @@ export default function LoginPage() {
           password,
           tenantId: tenant, // Middleware resolves this, but we send it for safety
         },
-        {
-          headers: {
-            'X-Tenant-ID': tenant || 'platform',
-          },
-        },
       );
 
       // Save refresh token and user info to localStorage
@@ -79,6 +74,11 @@ export default function LoginPage() {
       if (response.data.user) {
         localStorage.setItem('user', JSON.stringify(response.data.user));
       }
+      // Save tenantId for the axios interceptor
+      localStorage.setItem('tenantId', tenant || 'platform');
+
+      // Set client-readable cookie for middleware
+      document.cookie = `isAuthenticated=true; path=/; max-age=${15 * 60}; SameSite=Lax`;
 
       router.push(`/dashboard?tenant=${tenant || 'platform'}`);
     } catch (err: any) {

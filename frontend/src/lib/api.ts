@@ -5,6 +5,26 @@ const api = axios.create({
   withCredentials: true,
 });
 
+// Interceptor to handle tenant resolution via X-Tenant-ID header
+api.interceptors.request.use((config) => {
+  if (typeof window !== 'undefined') {
+    // 1. Check URL query parameter ?tenant=xxx
+    const urlParams = new URLSearchParams(window.location.search);
+    let tenantId = urlParams.get('tenant');
+
+    // 2. Check localStorage if not in URL
+    if (!tenantId) {
+      tenantId = localStorage.getItem('tenantId');
+    }
+
+    // 3. Inject header if tenantId exists
+    if (tenantId) {
+      config.headers['X-Tenant-ID'] = tenantId;
+    }
+  }
+  return config;
+});
+
 // Interceptor to handle automatic token refreshing on 401 Unauthorized
 api.interceptors.response.use(
   (response) => response,
@@ -41,6 +61,7 @@ api.interceptors.response.use(
         // Refresh failed (e.g. refresh token expired) -> clear state and redirect
         if (typeof window !== 'undefined') {
           localStorage.removeItem('refreshToken');
+          document.cookie = 'isAuthenticated=; path=/; max-age=0';
           window.location.href = '/login';
         }
       }
