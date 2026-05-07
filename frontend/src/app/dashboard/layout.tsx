@@ -66,6 +66,18 @@ export default function DashboardLayout({
       }
     };
     fetchTenants();
+
+    // Sync user data from MongoDB to keep localStorage fresh
+    const syncUser = async () => {
+      try {
+        const res = await api.get('/auth/me');
+        localStorage.setItem('user', JSON.stringify(res.data));
+      } catch (error) {
+        // If the user is no longer valid (e.g. deactivated), clear session
+        console.error('Failed to sync user:', error);
+      }
+    };
+    syncUser();
   }, [tenantQuery, pathname, router]);
 
   const handleTenantChange = (event: SelectChangeEvent) => {

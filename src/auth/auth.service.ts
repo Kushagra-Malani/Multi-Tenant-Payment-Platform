@@ -81,4 +81,16 @@ export class AuthService {
       // If token is invalid or already expired, we don't care during logout
     }
   }
+
+  /**
+   * Fetch the latest user document from MongoDB.
+   * Called by GET /auth/me to keep the frontend in sync.
+   */
+  async getMe(userId: string): Promise<UserDocument> {
+    const user = await this.usersService.findById(userId);
+    if (!user || !user.isActive) {
+      throw new UnauthorizedException('User not found or inactive');
+    }
+    return user;
+  }
 }

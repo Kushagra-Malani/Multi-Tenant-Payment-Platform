@@ -1,4 +1,4 @@
-import { Controller, Post, Body, Req, Res, HttpCode, HttpStatus, UnauthorizedException } from '@nestjs/common';
+import { Controller, Post, Get, Body, Req, Res, HttpCode, HttpStatus, UnauthorizedException } from '@nestjs/common';
 import { AuthService } from './auth.service';
 import { LoginDto } from './dto/login.dto';
 import { RefreshDto } from './dto/refresh.dto';
@@ -57,6 +57,27 @@ export class AuthController {
     return {
       message: 'Token refreshed',
       refreshToken: tokens.refreshToken,
+    };
+  }
+
+  /**
+   * Returns the current authenticated user's latest data from MongoDB.
+   * Used by the frontend to sync localStorage with the database on each page load.
+   */
+  @Get('me')
+  @HttpCode(HttpStatus.OK)
+  async me(@Req() req: Request) {
+    const user = req['user'] as { id: string; email: string; tenantId: string; role: string };
+    if (!user?.id) {
+      throw new UnauthorizedException('Not authenticated');
+    }
+
+    const freshUser = await this.authService.getMe(user.id);
+    return {
+      id: freshUser._id,
+      email: freshUser.email,
+      role: freshUser.role,
+      tenantId: freshUser.tenantId,
     };
   }
 

@@ -7,6 +7,7 @@ import { TenantService } from './tenant.service';
 import { TenantContextService } from './tenant-context.service';
 import { TenantMiddleware } from './tenant.middleware';
 import { TenantController } from './tenant.controller';
+import { TenantCacheInvalidationService } from './tenant-cache-invalidation.service';
 
 const logger = new Logger('TenantModule');
 
@@ -16,6 +17,7 @@ const logger = new Logger('TenantModule');
  * Responsibilities:
  * - Registers the Tenant Mongoose model
  * - Provides the REDIS_CLIENT factory (shared ioredis instance with TLS for Upstash)
+ * - Runs TenantCacheInvalidationService to watch MongoDB for real-time tenant changes
  * - Exports TenantService, TenantContextService, and TenantMiddleware so they
  *   can be consumed by AppModule and downstream feature modules
  *
@@ -65,6 +67,7 @@ const logger = new Logger('TenantModule');
     TenantService,
     TenantContextService,
     TenantMiddleware,
+    TenantCacheInvalidationService,
   ],
   exports: [TenantService, TenantContextService, TenantMiddleware, 'REDIS_CLIENT'],
 })
